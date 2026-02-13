@@ -62,7 +62,7 @@ def get_daily_data_baostock(symbol, start_date, end_date):
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
     df['vol'] = pd.to_numeric(df['vol'], errors='coerce')
-    df['trade_date'] = pd.to_datetime(df['trade_date'])
+    df['trade_date'] = pd.to_datetime(df['trade_date']).dt.strftime('%Y-%m-%d')
 
     # 修复 ts_code 格式
     df['ts_code'] = df['ts_code'].str.replace('sh.', '').str.replace('sz.', '')
