@@ -1,0 +1,113 @@
+# A股量化交易系统 - Docker Compose 配置
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库 (本地开发用)
+  postgres:
+    image: postgres:15-alpine
+    container_name: astock-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: astock
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: astock-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # FastAPI 服务
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: astock-api
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/astock
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ../data:/app/data
+      - ../models:/app/models
+      - ../logs:/app/logs
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Streamlit 前端
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: astock-dashboard
+    environment:
+      - API_BASE_URL=http://api:8000
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/astock
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    volumes:
+      - ../data:/app/data
+    command: streamlit run src/api/dashboard.py --server.port 8501 --server.address 0.0.0.0
+
+  # Jupyter Notebook (研究环境)
+  jupyter:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: astock-jupyter
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/astock
+    ports:
+      - "8888:8888"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../notebooks:/app/notebooks
+      - ../data:/app/data
+      - ../models:/app/models
+    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+
+  # 数据同步服务 (定时运行)
+  sync:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: astock-sync
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/astock
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - TUSHARE_TOKEN=${TUSHARE_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    command: python scripts/sync_data.py --type daily
+    profiles: ["sync"]  # 不自动启动
+
+volumes:
+  postgres_data:
+  redis_data:

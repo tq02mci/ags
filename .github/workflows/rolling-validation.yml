@@ -1,0 +1,147 @@
+name: 滚动验证与模型校准
+
+on:
+  schedule:
+    # 每天凌晨 1:00 运行（数据同步后）
+    - cron: '0 17 * * *'  # UTC 17:00 = 北京时间 01:00
+
+  workflow_dispatch:
+    inputs:
+      ts_code:
+        description: '股票代码 (留空验证所有)'
+        required: false
+        default: ''
+      start_date:
+        description: '开始日期'
+        required: true
+        default: '2025-01-01'
+      end_date:
+        description: '结束日期'
+        required: false
+        default: ''
+      model_type:
+        description: '模型类型'
+        required: true
+        default: 'xgboost'
+        type: choice
+        options:
+          - xgboost
+          - lightgbm
+          - randomforest
+
+jobs:
+  rolling-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6小时超时
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run rolling validation
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.ts_code }}" ]; then
+            python scripts/rolling_validation.py \
+              --ts-code ${{ github.event.inputs.ts_code }} \
+              --start-date ${{ github.event.inputs.start_date }} \
+              --end-date ${{ github.event.inputs.end_date }} \
+              --model-type ${{ github.event.inputs.model_type }}
+          else
+            # 默认验证热门股票
+            python scripts/rolling_validation.py \
+              --ts-code 000001.SZ \
+              --start-date ${{ github.event.inputs.start_date || '2025-01-01' }} \
+              --end-date ${{ github.event.inputs.end_date || '' }} \
+              --model-type ${{ github.event.inputs.model_type || 'xgboost' }}
+          fi
+
+      - name: Upload validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results-${{ github.run_id }}
+          path: |
+            models/validation/
+            logs/
+          retention-days: 30
+
+      - name: Analyze validation results
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python scripts/rolling_validation.py --analyze --results-dir models/validation/
+
+      - name: Update model performance to database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python -c "
+          import json
+          import glob
+          from src.database.connection import get_supabase_client
+
+          supabase = get_supabase_client()
+
+          # 读取最新的校准报告
+          report_files = glob.glob('models/validation/calibration_report_*.json')
+          if report_files:
+              latest_report = max(report_files, key=lambda x: x.split('_')[-1].split('.')[0])
+              with open(latest_report) as f:
+                  report = json.load(f)
+
+              # 保存到数据库
+              supabase.table('model_validation_results').insert({
+                  'model_type': '${{ github.event.inputs.model_type || 'xgboost' }}',
+                  'ts_code': '${{ github.event.inputs.ts_code || '000001.SZ' }}',
+                  'validation_date': '${{ github.event.inputs.start_date || '2025-01-01' }}',
+                  'optimal_threshold': report.get('optimal_threshold', 0.5),
+                  'calibration_report': report.get('calibration_report', {}),
+                  'run_id': '${{ github.run_id }}'
+              }).execute()
+              print('验证结果已保存到数据库')
+          "
+
+      - name: Create validation summary
+        run: |
+          echo "## 📊 滚动验证结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **股票代码**: ${{ github.event.inputs.ts_code || '000001.SZ' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **验证区间**: ${{ github.event.inputs.start_date || '2025-01-01' }} ~ ${{ github.event.inputs.end_date || '今天' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **模型类型**: ${{ github.event.inputs.model_type || 'xgboost' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "验证结果和图表已上传到 Artifacts" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '❌ 滚动验证失败',
+              body: `验证运行失败，请检查日志。\n\n运行ID: ${{ github.run_id }}`
+            })

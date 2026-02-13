@@ -1,0 +1,84 @@
+name: 数据同步
+
+on:
+  schedule:
+    # 每天下午 16:00 运行 (收盘后)
+    - cron: '0 8 * * 1-5'  # UTC 8:00 = 北京时间 16:00
+    # 每天晚上 22:00 运行 (补充数据)
+    - cron: '0 14 * * 1-5'  # UTC 14:00 = 北京时间 22:00
+
+  workflow_dispatch:  # 手动触发
+    inputs:
+      sync_type:
+        description: '同步类型'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - full
+          - stock_list
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run data sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.sync_type }}" = "full" ]; then
+            python scripts/sync_data.py --type full
+          elif [ "${{ github.event.inputs.sync_type }}" = "stock_list" ]; then
+            python scripts/sync_data.py --type stock_list
+          else
+            python scripts/sync_data.py --type daily
+          fi
+
+      - name: Update technical indicators
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python scripts/calc_indicators.py
+
+      - name: Notify success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: '✅ 数据同步成功完成'
+            })
+
+      - name: Notify failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: '❌ 数据同步失败，请检查日志'
+            })

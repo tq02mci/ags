@@ -1,0 +1,66 @@
+name: 模型训练
+
+on:
+  schedule:
+    # 每周日晚上运行
+    - cron: '0 14 * * 0'  # UTC 14:00 = 北京时间 22:00
+
+  workflow_dispatch:
+    inputs:
+      model_type:
+        description: '模型类型'
+        required: true
+        default: 'xgboost'
+        type: choice
+        options:
+          - xgboost
+          - lstm
+          - all
+      stock_code:
+        description: '股票代码 (留空训练全市场)'
+        required: false
+        default: ''
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Train model
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.stock_code }}" ]; then
+            python scripts/train_model.py --type ${{ github.event.inputs.model_type }} --stock ${{ github.event.inputs.stock_code }}
+          else
+            python scripts/train_model.py --type ${{ github.event.inputs.model_type }}
+          fi
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models
+          path: models/
+          retention-days: 30
+
+      - name: Generate predictions
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python scripts/generate_predictions.py
