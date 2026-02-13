@@ -52,9 +52,12 @@ def get_daily_data_baostock(symbol, start_date, end_date):
         'preclose': 'pre_close',
         'volume': 'vol',
         'amount': 'amount',
-        'turn': 'turnover',
         'pctChg': 'pct_change'
     })
+
+    # 只保留数据库中存在的字段
+    db_columns = ['trade_date', 'ts_code', 'open', 'high', 'low', 'close', 'pre_close', 'vol', 'amount', 'pct_change']
+    df = df[[col for col in db_columns if col in df.columns]]
 
     # 转换数据类型
     for col in ['open', 'high', 'low', 'close', 'pre_close', 'amount', 'turnover', 'pct_change']:
