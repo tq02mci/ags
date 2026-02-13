@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root))
 from loguru import logger
 
 from src.config import settings
-from src.data_collection.collectors import DataSyncManager
+from src.data_collection.collectors import DataSyncManager, AKShareCollector
 
 
 def setup_logging():
@@ -57,6 +57,29 @@ async def incremental_sync(days: int = 1):
     manager = DataSyncManager()
     await manager.incremental_sync(days)
     logger.info("增量同步完成")
+
+
+async def sync_single_stock(ts_code: str, days: int = 252 * 3):
+    """同步单只股票历史数据"""
+    from datetime import datetime, timedelta
+
+    logger.info(f"开始同步 {ts_code} 历史数据，最近 {days} 天...")
+
+    collector = AKShareCollector()
+    end_date = datetime.now().strftime('%Y-%m-%d')
+    start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    symbol = ts_code.split('.')[0]
+    df = collector.get_daily_data(symbol, start_date, end_date)
+
+    if df.empty:
+        logger.warning(f"{ts_code} 无数据")
+        return 0
+
+    # 保存到数据库
+    count = await collector.save_to_supabase('stock_daily', df, conflict_cols=['ts_code', 'trade_date'])
+    logger.info(f"{ts_code} 同步完成，共 {count} 条记录")
+    return count
 
 
 def main():
