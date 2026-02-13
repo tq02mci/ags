@@ -67,51 +67,62 @@ class AKShareCollector(DataCollector):
         """获取A股股票列表"""
         logger.info("正在从 AKShare 获取股票列表...")
 
-        # 上海A股
-        sh_stocks = ak.stock_sh_a_spot_em()
-        sh_stocks['exchange'] = 'SH'
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 上海A股
+                sh_stocks = ak.stock_sh_a_spot_em()
+                sh_stocks['exchange'] = 'SH'
 
-        # 深圳A股
-        sz_stocks = ak.stock_sz_a_spot_em()
-        sz_stocks['exchange'] = 'SZ'
+                # 深圳A股
+                sz_stocks = ak.stock_sz_a_spot_em()
+                sz_stocks['exchange'] = 'SZ'
 
-        # 北京A股
-        bj_stocks = ak.stock_bj_a_spot_em()
-        bj_stocks['exchange'] = 'BJ'
+                # 北京A股
+                bj_stocks = ak.stock_bj_a_spot_em()
+                bj_stocks['exchange'] = 'BJ'
 
-        # 合并
-        all_stocks = pd.concat([sh_stocks, sz_stocks, bj_stocks], ignore_index=True)
+                # 合并
+                all_stocks = pd.concat([sh_stocks, sz_stocks, bj_stocks], ignore_index=True)
 
-        # 标准化列名
-        column_mapping = {
-            '代码': 'symbol',
-            '名称': 'name',
-            '最新价': 'close',
-            '涨跌幅': 'pct_change',
-            '涨跌额': 'change',
-            '成交量': 'vol',
-            '成交额': 'amount',
-            '振幅': 'amplitude',
-            '最高': 'high',
-            '最低': 'low',
-            '今开': 'open',
-            '昨收': 'pre_close',
-            '量比': 'volume_ratio',
-            '换手率': 'turnover',
-            '市盈率-动态': 'pe',
-            '市净率': 'pb',
-            '总市值': 'total_mv',
-            '流通市值': 'circ_mv',
-            '涨速': 'rise_speed',
-            '5分钟涨跌': '5min_change',
-            '60日涨跌幅': '60d_change',
-            '年初至今涨跌幅': 'ytd_change',
-        }
+                # 标准化列名
+                column_mapping = {
+                    '代码': 'symbol',
+                    '名称': 'name',
+                    '最新价': 'close',
+                    '涨跌幅': 'pct_change',
+                    '涨跌额': 'change',
+                    '成交量': 'vol',
+                    '成交额': 'amount',
+                    '振幅': 'amplitude',
+                    '最高': 'high',
+                    '最低': 'low',
+                    '今开': 'open',
+                    '昨收': 'pre_close',
+                    '量比': 'volume_ratio',
+                    '换手率': 'turnover',
+                    '市盈率-动态': 'pe',
+                    '市净率': 'pb',
+                    '总市值': 'total_mv',
+                    '流通市值': 'circ_mv',
+                    '涨速': 'rise_speed',
+                    '5分钟涨跌': '5min_change',
+                    '60日涨跌幅': '60d_change',
+                    '年初至今涨跌幅': 'ytd_change',
+                }
 
-        all_stocks = all_stocks.rename(columns=column_mapping)
-        all_stocks['ts_code'] = all_stocks['symbol'] + '.' + all_stocks['exchange']
+                all_stocks = all_stocks.rename(columns=column_mapping)
+                all_stocks['ts_code'] = all_stocks['symbol'] + '.' + all_stocks['exchange']
 
-        return all_stocks
+                return all_stocks
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"第 {attempt + 1} 次尝试失败: {e}，{2 ** attempt}秒后重试...")
+                    time.sleep(2 ** attempt)
+                else:
+                    logger.error(f"获取股票列表失败，已重试 {max_retries} 次: {e}")
+                    raise
 
     def get_daily_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """获取日线数据"""
@@ -168,30 +179,43 @@ class AKShareCollector(DataCollector):
         """获取股票基础信息"""
         logger.info("正在获取股票基础信息...")
 
-        # 获取所有股票列表
-        df = ak.stock_info_a_code_name()
-        df = df.rename(columns={'code': 'symbol', 'name': 'name'})
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 获取所有股票列表
+                df = ak.stock_info_a_code_name()
+                df = df.rename(columns={'code': 'symbol', 'name': 'name'})
 
-        # 获取详细信息
-        info_df = ak.stock_individual_info_em()
-        info_df = info_df.rename(columns={
-            '股票代码': 'symbol',
-            '股票简称': 'name',
-            '总股本': 'total_shares',
-            '流通股': 'float_shares',
-            '行业': 'industry',
-            '上市时间': 'list_date',
-        })
+                # 获取详细信息（带重试）
+                try:
+                    info_df = ak.stock_individual_info_em()
+                    info_df = info_df.rename(columns={
+                        '股票代码': 'symbol',
+                        '股票简称': 'name',
+                        '总股本': 'total_shares',
+                        '流通股': 'float_shares',
+                        '行业': 'industry',
+                        '上市时间': 'list_date',
+                    })
+                    # 合并数据
+                    df = df.merge(info_df, on='symbol', how='left', suffixes=('', '_info'))
+                except Exception as e:
+                    logger.warning(f"获取详细信息失败: {e}，使用基础信息")
 
-        # 合并数据
-        df = df.merge(info_df, on='symbol', how='left', suffixes=('', '_info'))
+                # 添加交易所
+                df['exchange'] = df['symbol'].apply(self._get_exchange)
+                df['ts_code'] = df['symbol'] + '.' + df['exchange']
+                df['market'] = df['symbol'].apply(self._get_market)
 
-        # 添加交易所
-        df['exchange'] = df['symbol'].apply(self._get_exchange)
-        df['ts_code'] = df['symbol'] + '.' + df['exchange']
-        df['market'] = df['symbol'].apply(self._get_market)
+                return df
 
-        return df
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"第 {attempt + 1} 次尝试失败: {e}，{2 ** attempt}秒后重试...")
+                    time.sleep(2 ** attempt)
+                else:
+                    logger.error(f"获取股票信息失败，已重试 {max_retries} 次: {e}")
+                    raise
 
     @staticmethod
     def _get_exchange(symbol: str) -> str:
