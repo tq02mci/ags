@@ -60,6 +60,7 @@ class Settings(BaseSettings):
         env_file = Path(__file__).parent.parent / ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -71,7 +72,26 @@ class Settings(BaseSettings):
 
 
 # 全局配置实例
-settings = Settings()
+# 如果 .env 文件中的值为空，尝试从环境变量读取
+def load_settings():
+    """加载配置，优先环境变量"""
+    # 先尝试从环境变量获取
+    env_vars = {
+        'SUPABASE_URL': os.getenv('SUPABASE_URL', ''),
+        'SUPABASE_KEY': os.getenv('SUPABASE_KEY', ''),
+        'SUPABASE_SERVICE_KEY': os.getenv('SUPABASE_SERVICE_KEY', ''),
+        'DATABASE_URL': os.getenv('DATABASE_URL'),
+        'TUSHARE_TOKEN': os.getenv('TUSHARE_TOKEN', ''),
+        'REDIS_URL': os.getenv('REDIS_URL'),
+    }
+
+    # 过滤掉 None 和空字符串
+    kwargs = {k: v for k, v in env_vars.items() if v is not None and v != ''}
+
+    return Settings(**kwargs)
+
+
+settings = load_settings()
 
 
 # 股票市场配置
