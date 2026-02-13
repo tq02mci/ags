@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     BACKTEST_SLIPPAGE: float = 0.001  # 滑点
 
     class Config:
-        env_file = ".env"
+        env_file = Path(__file__).parent.parent / ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
 
