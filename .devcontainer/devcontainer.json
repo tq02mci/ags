@@ -32,8 +32,8 @@
       }
     }
   },
-  "postCreateCommand": "pip install -r requirements.txt && echo '环境配置完成!'",
-  "postStartCommand": "git config --global --add safe.directory /workspaces/a-stock-quant",
+  "postCreateCommand": "pip install --upgrade pip && pip install akshare supabase loguru python-dotenv pandas numpy requests pydantic-settings || echo '部分依赖安装失败，可手动安装'",
+  "postStartCommand": "git config --global --add safe.directory /workspaces/ags || true",
   "forwardPorts": [8000, 8501, 8888],
   "portsAttributes": {
     "8000": {
