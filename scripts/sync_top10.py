@@ -11,7 +11,6 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.data_collection.collectors import AKShareCollector
 from src.database.connection import get_supabase_client
 import pandas as pd
 
@@ -72,7 +71,6 @@ def get_daily_data_baostock(symbol, start_date, end_date):
     return df
 
 async def main():
-    collector = AKShareCollector()
     supabase = get_supabase_client()
 
     # 10只热门股票 (baostock 格式: sh.600519 或 sz.000001)
@@ -92,18 +90,16 @@ async def main():
     start = (datetime.now() - timedelta(days=252*3)).strftime('%Y-%m-%d')
     end = datetime.now().strftime('%Y-%m-%d')
 
+    print(f"同步时间范围: {start} 至 {end}")
+    print("=" * 50)
+
     success = 0
     for ts_code, bs_code in stocks:
         try:
-            print(f"正在同步 {ts_code}...")
+            print(f"\n正在同步 {ts_code}...")
 
-            # 尝试使用 baostock
-            try:
-                df = get_daily_data_baostock(bs_code, start, end)
-            except Exception as e:
-                print(f"  baostock 失败，尝试 akshare...")
-                symbol = ts_code.split('.')[0]
-                df = collector.get_daily_data(symbol, start, end)
+            # 只使用 baostock，避免 AKShare 的 IP 限制
+            df = get_daily_data_baostock(bs_code, start, end)
 
             if not df.empty:
                 # 保存到数据库
@@ -115,11 +111,16 @@ async def main():
                 print(f"⚠️ {ts_code} 无数据")
         except Exception as e:
             print(f"❌ {ts_code} 失败: {e}")
+            import traceback
+            traceback.print_exc()
 
-        # 随机延迟 3-7 秒
-        time.sleep(random.uniform(3, 7))
+        # 随机延迟 5-10 秒，避免请求过快
+        delay = random.uniform(5, 10)
+        print(f"  等待 {delay:.1f} 秒...")
+        time.sleep(delay)
 
-    print(f"\n完成: {success}/{len(stocks)} 只股票同步成功")
+    print(f"\n{'=' * 50}")
+    print(f"完成: {success}/{len(stocks)} 只股票同步成功")
 
 if __name__ == "__main__":
     asyncio.run(main())
