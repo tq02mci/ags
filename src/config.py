@@ -61,6 +61,7 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = True
         extra = "ignore"
+        env_prefix = ""  # 不需要前缀
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -75,20 +76,36 @@ class Settings(BaseSettings):
 # 如果 .env 文件中的值为空，尝试从环境变量读取
 def load_settings():
     """加载配置，优先环境变量"""
-    # 先尝试从环境变量获取
-    env_vars = {
-        'SUPABASE_URL': os.getenv('SUPABASE_URL', ''),
-        'SUPABASE_KEY': os.getenv('SUPABASE_KEY', ''),
-        'SUPABASE_SERVICE_KEY': os.getenv('SUPABASE_SERVICE_KEY', ''),
-        'DATABASE_URL': os.getenv('DATABASE_URL'),
-        'TUSHARE_TOKEN': os.getenv('TUSHARE_TOKEN', ''),
-        'REDIS_URL': os.getenv('REDIS_URL'),
+    # 先实例化 Settings (会从 .env 读取)
+    s = Settings()
+
+    # 然后用环境变量覆盖 (环境变量优先级更高)
+    env_mappings = {
+        'SUPABASE_URL': 'SUPABASE_URL',
+        'SUPABASE_KEY': 'SUPABASE_KEY',
+        'SUPABASE_SERVICE_KEY': 'SUPABASE_SERVICE_KEY',
+        'DATABASE_URL': 'DATABASE_URL',
+        'TUSHARE_TOKEN': 'TUSHARE_TOKEN',
+        'REDIS_URL': 'REDIS_URL',
     }
 
-    # 过滤掉 None 和空字符串
-    kwargs = {k: v for k, v in env_vars.items() if v is not None and v != ''}
+    # 调试信息 (GitHub Actions 中可以看到)
+    if os.getenv('GITHUB_ACTIONS'):
+        print(f"[DEBUG] GITHUB_ACTIONS detected")
 
-    return Settings(**kwargs)
+    for env_var, attr_name in env_mappings.items():
+        env_value = os.getenv(env_var)
+        if env_value:  # 如果环境变量有值，覆盖配置
+            setattr(s, attr_name, env_value)
+            if os.getenv('GITHUB_ACTIONS') and 'KEY' not in env_var:
+                print(f"[DEBUG] {env_var} overridden from env")
+
+    # 再次检查关键配置
+    if os.getenv('GITHUB_ACTIONS'):
+        print(f"[DEBUG] Final SUPABASE_URL: {s.SUPABASE_URL[:30] + '...' if s.SUPABASE_URL else 'NOT SET'}")
+        print(f"[DEBUG] Final SUPABASE_KEY length: {len(s.SUPABASE_KEY) if s.SUPABASE_KEY else 0}")
+
+    return s
 
 
 settings = load_settings()
