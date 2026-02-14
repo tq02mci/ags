@@ -45,30 +45,38 @@ async def sync_batch(start_idx: int, end_idx: int, batch_size: int = 100):
     supabase = get_supabase_client()
     collector = AKShareCollector()
 
-    # 获取股票列表（使用分页查询避免1000条限制）
+    # 获取股票列表（先查询总数，再分页获取）
     logger.info("获取股票列表...")
+
+    # 先获取总数
+    count_result = supabase.table('stocks_info').select('*', count='exact').eq('list_status', 'L').execute()
+    total_count = count_result.count if hasattr(count_result, 'count') else len(count_result.data)
+    logger.info(f"数据库中共有 {total_count} 只上市股票")
+
+    # 分页获取所有股票
     stocks = []
     page_size = 1000
     offset = 0
 
-    while True:
+    while len(stocks) < total_count:
+        logger.info(f"正在获取第 {offset+1} 到 {min(offset+page_size, total_count)} 只股票...")
         page_result = supabase.table('stocks_info')\
             .select('ts_code,list_status')\
             .eq('list_status', 'L')\
-            .range(offset, offset + page_size - 1)\
+            .order('ts_code')\
+            .limit(page_size)\
+            .offset(offset)\
             .execute()
 
         page_data = page_result.data
-        if not page_data:
+        if not page_data or len(page_data) == 0:
             break
 
         stocks.extend(page_data)
+        offset += len(page_data)
 
         if len(page_data) < page_size:
             break
-
-        offset += page_size
-        logger.info(f"已获取 {len(stocks)} 只股票...")
 
     logger.info(f"总共获取到 {len(stocks)} 只股票")
 
