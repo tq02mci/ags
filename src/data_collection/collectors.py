@@ -29,6 +29,11 @@ class DataCollector:
             return 0
 
         try:
+            # 处理 datetime 类型，转换为字符串
+            for col in data.columns:
+                if pd.api.types.is_datetime64_any_dtype(data[col]):
+                    data[col] = data[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+
             # 处理 NaN 值
             data = data.replace({pd.NaT: None, float('nan'): None})
 
