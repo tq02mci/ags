@@ -169,7 +169,7 @@ class AKShareCollector(DataCollector):
             })
 
             df['ts_code'] = f"{symbol}.{exchange.upper()}"
-            df['trade_date'] = pd.to_datetime(df['trade_date'])
+            df['trade_date'] = pd.to_datetime(df['trade_date']).dt.strftime('%Y-%m-%d')
 
             # 计算昨收
             df['pre_close'] = df['close'].shift(1)
