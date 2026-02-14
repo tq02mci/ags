@@ -466,8 +466,8 @@ class DataSyncManager:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365 * 3)
 
-        # 获取股票列表
-        stocks = self.supabase.table('stocks_info').select('ts_code,list_status').eq('list_status', 'L').execute()
+        # 获取股票列表（Supabase默认限制1000条，需要设置更大的限制）
+        stocks = self.supabase.table('stocks_info').select('ts_code,list_status').eq('list_status', 'L').limit(10000).execute()
 
         for i, stock in enumerate(stocks.data):
             ts_code = stock['ts_code']

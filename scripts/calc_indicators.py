@@ -76,7 +76,7 @@ def calc_all_indicators():
     supabase = get_supabase_client()
 
     # 获取所有上市股票
-    stocks = supabase.table("stocks_info").select("ts_code").eq("list_status", "L").execute()
+    stocks = supabase.table("stocks_info").select("ts_code").eq("list_status", "L").limit(10000).execute()
 
     total = 0
     for i, stock in enumerate(stocks.data):

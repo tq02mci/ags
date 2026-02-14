@@ -45,9 +45,9 @@ async def sync_batch(start_idx: int, end_idx: int, batch_size: int = 100):
     supabase = get_supabase_client()
     collector = AKShareCollector()
 
-    # 获取股票列表
+    # 获取股票列表（Supabase默认限制1000条，需要设置更大的限制）
     logger.info("获取股票列表...")
-    stocks_result = supabase.table('stocks_info').select('ts_code,list_status').eq('list_status', 'L').execute()
+    stocks_result = supabase.table('stocks_info').select('ts_code,list_status').eq('list_status', 'L').limit(10000).execute()
     stocks = stocks_result.data
 
     if not stocks:

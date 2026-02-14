@@ -29,7 +29,7 @@ class DataQualityChecker:
         """检查股票列表数据"""
         logger.info("检查股票列表数据...")
 
-        result = self.supabase.table("stocks_info").select("*").execute()
+        result = self.supabase.table("stocks_info").select("*").limit(10000).execute()
         df = pd.DataFrame(result.data)
 
         issues = []

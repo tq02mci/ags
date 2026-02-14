@@ -135,7 +135,7 @@ async def main():
 
     # 获取所有股票列表
     supabase = get_supabase_client()
-    result = supabase.table('stocks_info').select('ts_code').execute()
+    result = supabase.table('stocks_info').select('ts_code').limit(10000).execute()
     all_stocks = [r['ts_code'] for r in result.data]
 
     print(f"股票总数: {len(all_stocks)} 只")
