@@ -1,0 +1,57 @@
+name: 分批数据同步
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_index:
+        description: '起始索引（0开始）'
+        required: true
+        default: '0'
+        type: string
+      batch_size:
+        description: '每批处理数量'
+        required: true
+        default: '500'
+        type: choice
+        options:
+          - '100'
+          - '200'
+          - '500'
+          - '1000'
+
+jobs:
+  sync-batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+      GITHUB_ACTIONS: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run batch sync
+        run: |
+          START=${{ github.event.inputs.start_index }}
+          SIZE=${{ github.event.inputs.batch_size }}
+          END=$((START + SIZE))
+          echo "Syncing stocks from $START to $END"
+          python scripts/sync_batch.py --start $START --end $END
+
+      - name: Check status
+        run: |
+          echo "Batch sync completed. Check Supabase for data count."
