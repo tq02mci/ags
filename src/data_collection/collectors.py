@@ -47,8 +47,21 @@ class DataCollector:
             # 处理 NaN 值
             data = data.replace({pd.NaT: None, float('nan'): None})
 
-            # 转换为字典列表
+            # 转换为字典列表，确保所有值都可以 JSON 序列化
             records = data.to_dict('records')
+
+            # 递归处理所有值，确保可以 JSON 序列化
+            def serialize_value(v):
+                if hasattr(v, 'strftime'):
+                    return v.strftime('%Y-%m-%d %H:%M:%S')
+                elif pd.isna(v):
+                    return None
+                return v
+
+            records = [
+                {k: serialize_value(v) for k, v in record.items()}
+                for record in records
+            ]
 
             # 分批插入
             total_inserted = 0
