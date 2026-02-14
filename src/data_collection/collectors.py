@@ -197,6 +197,10 @@ class AKShareCollector(DataCollector):
             # 计算昨收
             df['pre_close'] = df['close'].shift(1)
 
+            # 只保留数据库中存在的列
+            db_columns = ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_change', 'vol', 'amount']
+            df = df[[col for col in db_columns if col in df.columns]]
+
             return df
 
         except Exception as e:
