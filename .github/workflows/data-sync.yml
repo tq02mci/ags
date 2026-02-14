@@ -23,6 +23,14 @@ jobs:
   sync-data:
     runs-on: ubuntu-latest
 
+    # 环境变量设置在 job 级别，所有 steps 都可以访问
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+      GITHUB_ACTIONS: "true"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,12 +44,21 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Debug environment variables
+        run: |
+          echo "Checking environment variables..."
+          if [ -n "$SUPABASE_URL" ]; then
+            echo "SUPABASE_URL is set (length: ${#SUPABASE_URL})"
+          else
+            echo "SUPABASE_URL is NOT set!"
+          fi
+          if [ -n "$SUPABASE_KEY" ]; then
+            echo "SUPABASE_KEY is set (length: ${#SUPABASE_KEY})"
+          else
+            echo "SUPABASE_KEY is NOT set!"
+          fi
+
       - name: Run data sync
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: |
           if [ "${{ github.event.inputs.sync_type }}" = "full" ]; then
             python scripts/sync_data.py --type full
@@ -52,10 +69,6 @@ jobs:
           fi
 
       - name: Update technical indicators
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           python scripts/calc_indicators.py
 
