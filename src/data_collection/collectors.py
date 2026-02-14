@@ -29,10 +29,20 @@ class DataCollector:
             return 0
 
         try:
-            # 处理 datetime 类型，转换为字符串
+            # 处理所有可能的非 JSON 序列化类型
             for col in data.columns:
                 if pd.api.types.is_datetime64_any_dtype(data[col]):
+                    # 转换为字符串
                     data[col] = data[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+                elif data[col].dtype == 'object':
+                    # 处理 object 类型，可能是 Timestamp
+                    try:
+                        # 尝试检测是否包含 Timestamp 对象
+                        sample = data[col].dropna().iloc[0] if not data[col].dropna().empty else None
+                        if hasattr(sample, 'strftime'):
+                            data[col] = pd.to_datetime(data[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        pass
 
             # 处理 NaN 值
             data = data.replace({pd.NaT: None, float('nan'): None})
