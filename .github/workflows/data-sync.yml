@@ -18,6 +18,22 @@ on:
           - daily
           - full
           - stock_list
+          - batch
+      start_index:
+        description: '分批同步：起始索引（0开始）'
+        required: false
+        default: '0'
+        type: string
+      batch_size:
+        description: '分批同步：每批数量'
+        required: false
+        default: '500'
+        type: choice
+        options:
+          - '100'
+          - '200'
+          - '500'
+          - '1000'
 
 jobs:
   sync-data:
@@ -66,6 +82,12 @@ jobs:
             python scripts/sync_data.py --type full
           elif [ "${{ github.event.inputs.sync_type }}" = "stock_list" ]; then
             python scripts/sync_data.py --type stock_list
+          elif [ "${{ github.event.inputs.sync_type }}" = "batch" ]; then
+            START=${{ github.event.inputs.start_index }}
+            SIZE=${{ github.event.inputs.batch_size }}
+            END=$((START + SIZE))
+            echo "Batch sync: from $START to $END"
+            python scripts/sync_batch.py --start $START --end $END
           else
             python scripts/sync_data.py --type daily
           fi
